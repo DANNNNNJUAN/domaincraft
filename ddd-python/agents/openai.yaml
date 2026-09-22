@@ -1,0 +1,4 @@
+interface:
+  display_name: "DDD Python 设计与验证"
+  short_description: "从业务不变量推导 Python 对象设计，执行离线架构检查与契约测试"
+  default_prompt: "使用 $ddd-python 根据业务规则设计 Python 领域模型，并运行本地检查与测试。"

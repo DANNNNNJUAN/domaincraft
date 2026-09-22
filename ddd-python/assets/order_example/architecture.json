@@ -1,0 +1,10 @@
+{
+  "source_roots": ["domain", "application", "infrastructure"],
+  "layers": [
+    {"prefix": "domain", "allow": ["domain"], "forbidden": ["sqlite3", "requests", "httpx", "urllib"]},
+    {"prefix": "application", "allow": ["application", "domain"], "forbidden": ["sqlite3"]},
+    {"prefix": "infrastructure", "allow": ["infrastructure", "domain"], "forbidden": []}
+  ],
+  "exceptions": [],
+  "test_dir": "tests"
+}

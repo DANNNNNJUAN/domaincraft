@@ -1,0 +1,242 @@
+{
+  "version": 1,
+  "contexts": [
+    {
+      "id": "CTX-ORDER",
+      "name": "订单",
+      "responsibility": "维护订单商品、金额和确认状态"
+    }
+  ],
+  "aggregates": [
+    {
+      "id": "AGG-ORDER",
+      "context": "CTX-ORDER",
+      "root": "domain.order.Order",
+      "invariants": [
+        "ORD-001",
+        "ORD-002",
+        "ORD-003",
+        "ORD-004"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "ORD-001",
+      "statement": "空订单不可确认，拒绝时状态不变",
+      "source": "本包示例约定，非用户真实业务",
+      "status": "confirmed",
+      "owner": "AGG-ORDER",
+      "symbols": [
+        "domain.order.Order.confirm"
+      ],
+      "tests": [
+        "tests.test_order.OrderTests.test_empty_order"
+      ],
+      "kind": "invariant"
+    },
+    {
+      "id": "ORD-002",
+      "statement": "只有草稿可修改或确认，确认不能重复",
+      "source": "本包示例约定",
+      "status": "confirmed",
+      "owner": "AGG-ORDER",
+      "symbols": [
+        "domain.order.Order.confirm",
+        "domain.order.Order.add_item"
+      ],
+      "tests": [
+        "tests.test_order.OrderTests.test_confirm"
+      ],
+      "kind": "invariant"
+    },
+    {
+      "id": "ORD-003",
+      "statement": "金额有限非负且同币种，总额等于单价乘数量之和",
+      "source": "本包示例约定",
+      "status": "confirmed",
+      "owner": "AGG-ORDER",
+      "symbols": [
+        "domain.order.Money",
+        "domain.order.Order.total",
+        "domain.order.Order.add_item"
+      ],
+      "tests": [
+        "tests.test_order.OrderTests.test_money",
+        "tests.test_order.OrderTests.test_total_across_quantities"
+      ],
+      "kind": "invariant"
+    },
+    {
+      "id": "ORD-004",
+      "statement": "数量为正整数，订单行不可由调用方直接修改",
+      "source": "本包示例约定",
+      "status": "confirmed",
+      "owner": "AGG-ORDER",
+      "symbols": [
+        "domain.order.OrderLine",
+        "domain.order.Order.add_item"
+      ],
+      "tests": [
+        "tests.test_order.OrderTests.test_quantity"
+      ],
+      "kind": "invariant"
+    },
+    {
+      "id": "ORD-005",
+      "statement": "仓储显式保存独立快照，加载缺失对象抛出 KeyError",
+      "source": "本包持久化替换契约",
+      "status": "confirmed",
+      "owner": "AGG-ORDER",
+      "symbols": [
+        "domain.repository.OrderRepository.save",
+        "domain.repository.OrderRepository.get"
+      ],
+      "tests": [
+        "tests.test_repository.MemoryContract.test_snapshot_and_roundtrip",
+        "tests.test_repository.SQLiteContract.test_snapshot_and_roundtrip",
+        "tests.test_repository.MemoryContract.test_missing",
+        "tests.test_repository.SQLiteContract.test_missing",
+        "tests.test_repository.SQLiteIntegration.test_reopen"
+      ],
+      "kind": "contract"
+    }
+  ],
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "problem": "确认约束必须不能被调用方绕过",
+      "evidence": "ORD-001 和 ORD-002 共享订单状态",
+      "choice": "Order 封装状态，普通方法执行确认",
+      "alternatives": [
+        "状态模式",
+        "应用服务直接设置状态"
+      ],
+      "reason": "只有两个状态，无需 State 类层级",
+      "consequences": "状态复杂时重新评估，业务拒绝保持对象不变",
+      "solid": "SRP 以订单生命周期为职责依据，不拆散不变量",
+      "verification": "空订单、重复确认和确认后修改的行为测试",
+      "rules": [
+        "ORD-001",
+        "ORD-002"
+      ]
+    },
+    {
+      "id": "DEC-002",
+      "problem": "内存与 SQLite 实现应可替换",
+      "evidence": "快速测试与本地持久化使用相同用例",
+      "choice": "领域 Repository Protocol，两个适配器实现",
+      "alternatives": [
+        "用例直接调用 SQLite",
+        "存储可变对象引用"
+      ],
+      "reason": "业务不依赖存储协议，加载快照隔离",
+      "consequences": "增加映射与复制成本，跨进程并发另行设计",
+      "solid": "DIP 由业务定义端口，ISP 只暴露 get/save，LSP 由共享行为契约测试",
+      "verification": "两种实现运行同一组仓储契约测试",
+      "rules": [
+        "ORD-005"
+      ]
+    },
+    {
+      "id": "DEC-003",
+      "problem": "金额和订单行可能被外部修改",
+      "evidence": "总额与数量规则需要所有公开入口一致",
+      "choice": "Decimal 金额与 frozen 值对象、tuple 订单行集合",
+      "alternatives": [
+        "float",
+        "可变字典"
+      ],
+      "reason": "保持十进制语义及嵌套不可变数据",
+      "consequences": "修改通过聚合替换对象，避免隐式修改",
+      "solid": "将值语义与订单生命周期分开；无需计价 Strategy",
+      "verification": "金额、币种、数量和不可变行为测试",
+      "rules": [
+        "ORD-003",
+        "ORD-004"
+      ]
+    }
+  ],
+  "responsibilities": [
+    {
+      "symbol": "domain.order.Order",
+      "responsibility": "订单生命周期与行为入口",
+      "rules": [
+        "ORD-001",
+        "ORD-002",
+        "ORD-003",
+        "ORD-004"
+      ],
+      "decisions": [
+        "DEC-001"
+      ]
+    },
+    {
+      "symbol": "domain.order.Money",
+      "responsibility": "金额值语义",
+      "rules": [
+        "ORD-003"
+      ],
+      "decisions": [
+        "DEC-003"
+      ]
+    },
+    {
+      "symbol": "domain.order.OrderLine",
+      "responsibility": "合法不可变订单行",
+      "rules": [
+        "ORD-004"
+      ],
+      "decisions": [
+        "DEC-003"
+      ]
+    },
+    {
+      "symbol": "domain.repository.OrderRepository",
+      "responsibility": "仓储行为契约",
+      "rules": [
+        "ORD-005"
+      ],
+      "decisions": [
+        "DEC-002"
+      ]
+    },
+    {
+      "symbol": "application.confirm_order.confirm_order",
+      "responsibility": "协调加载、确认与保存",
+      "rules": [
+        "ORD-001",
+        "ORD-002",
+        "ORD-005"
+      ],
+      "decisions": [
+        "DEC-001",
+        "DEC-002"
+      ]
+    },
+    {
+      "symbol": "infrastructure.memory.MemoryOrderRepository",
+      "responsibility": "快照内存存储",
+      "rules": [
+        "ORD-005"
+      ],
+      "decisions": [
+        "DEC-002"
+      ]
+    },
+    {
+      "symbol": "infrastructure.sqlite.SQLiteOrderRepository",
+      "responsibility": "SQLite 映射与事务保存",
+      "rules": [
+        "ORD-005"
+      ],
+      "decisions": [
+        "DEC-002"
+      ]
+    }
+  ],
+  "reviews": [
+    "真实业务是否允许取消、确认幂等和跨币种换算，需要业务确认",
+    "共享契约测试只验证已列举行为，不证明全部 LSP 或分布式一致性"
+  ]
+}
