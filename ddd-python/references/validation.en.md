@@ -4,7 +4,7 @@
 
 `check.py` checks model references, architecture, comments, and business tests. Use the [project acceptance entry point](large-projects.en.md) for multiple packages or native project tests. Both retain execution evidence.
 
-These commands need only the Python 3.9+ standard library: no pytest, network access, or API key. Absolute paths let you run them from any directory.
+These commands need only the Python 3.9+ standard library: no pytest, network access, or API key. Absolute paths let you run them from any directory. For package mappings and configuration stored outside the project root, see the [layout configuration](model-format.en.md).
 
 ```bash
 python3 /absolute/ddd-python/scripts/check.py --all
@@ -33,7 +33,7 @@ Tests use the current Python interpreter in a separate process, with a default 6
 | Check | Automated evidence | Further judgment needed |
 |---|---|---|
 | Model references | IDs, links, rule ownership, implementation symbols, and test references | Whether business assumptions hold |
-| Static architecture | Imports, forbidden modules, layer dependencies, and module cycles in the configured scope | Dynamic code and dependencies outside that scope |
+| Static architecture | Imports, forbidden modules, layer dependencies, and module cycles in the configured scope | Other reflective behavior and whether the declared scope is complete |
 | Comment structure | Documentation presence, Rules references, and Args parameter names | Whether comments accurately explain the business |
 | Business execution | Assertions, exceptions, state after rejection, repository contracts, and SQLite integration | Whether tests cover the important business cases |
 

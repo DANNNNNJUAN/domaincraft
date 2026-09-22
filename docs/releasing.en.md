@@ -11,7 +11,7 @@ Update `VERSION`, both README versions, and both changelogs, then review `releas
 ```bash
 python3 -B -m unittest discover -s tests -v
 python3 -B tools/build_release.py --output dist
-python3 -B tools/verify_release.py dist/ddd-python-skill-0.1.0.zip
+python3 -B tools/verify_release.py dist/ddd-python-skill-0.1.1.zip
 ```
 
 Use the version from `VERSION` in the archive name. The ZIP contains the repository files and a generated `RELEASE-MANIFEST.json` with a SHA-256 hash for every file. The adjacent `.sha256` file checks the entire archive. File order and timestamps are fixed, so identical inputs are reproducible in the same Python/zlib environment.
@@ -20,7 +20,7 @@ The verifier checks paths, the file list, and hashes before extracting to a temp
 
 ## Upload to GitHub
 
-After creating a repository, upload the extracted files or push the local repository. Check the scope with `git status`: `benchmarks/`, `validation/`, and `dist/` should be ignored. Match the tag to the version, for example `v0.1.0`.
+After creating a repository, upload the extracted files or push the local repository. Check the scope with `git status`: `benchmarks/`, `validation/`, and `dist/` should be ignored. Match the tag to the version, for example `v0.1.1`.
 
 Wait for CI to pass, then create a Release with the ZIP and `.sha256` file attached. The workflow follows [GitHub's Python matrix approach](https://docs.github.com/en/actions/tutorials/build-and-test-code/python), with Actions pinned to specific commits. Passing status comes from the actual remote runs.
 

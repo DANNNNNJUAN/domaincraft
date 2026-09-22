@@ -1,4 +1,4 @@
-# Validation record: 0.1.0
+# Validation record: 0.1.1
 
 [简体中文](validation.md) · English
 
@@ -8,7 +8,7 @@ The core tests, installation checks, and four large-project pilot tasks passed f
 
 | Area | Coverage | Result |
 |---|---|---|
-| Checkers and project tools | 69 regression tests covering injected defects, package dependencies, baseline protection, service cleanup, and false-PASS detection | PASS |
+| Checkers and project tools | 87 regression tests covering injected defects, package dependencies, baseline protection, service cleanup, and false-PASS detection | PASS |
 | Order example | 14 business and repository contract tests, including in-memory and SQLite implementations | PASS |
 | Release tools | 6 tests covering archive scope, reproducible builds, symlinks, altered hashes, and installation protection | PASS |
 
@@ -16,14 +16,20 @@ Clean installation passed on macOS arm64 with Python 3.9.6 and 3.13.9. The verif
 
 ```bash
 python3 -B tools/build_release.py --output dist
-python3 -B tools/verify_release.py dist/ddd-python-skill-0.1.0.zip
+python3 -B tools/verify_release.py dist/ddd-python-skill-0.1.1.zip
 ```
 
 GitHub Actions is configured for additional platforms and Python versions. Their passing status requires actual remote runs.
 
+## Package-layout correction in 0.1.1
+
+User review exposed project-relative module naming and unresolved imports being omitted from architecture checks. This release adds explicit import-root mappings and separate configuration locations, and makes unresolved dependencies fail the check.
+
+Eighteen new regressions cover normal packages, src and namespace layouts, relative imports, nested configuration, visible dependency edges, unknown and out-of-scope imports, and symlink protection. The end-to-end package fixture also runs the existing 14 order tests with qualified imports while preserving comment and rule-trace checks. These are reproduction fixtures; the user's original project was not available for rerunning.
+
 ## Large-project pilot runs
 
-One task was selected from each source. These results come from the development workspace. Upstream source trees, containers, and raw logs remain local and are not included in the first release.
+These historical pilot results belong to 0.1.0 and were not rerun for this checker fix. One task was selected from each source. These results come from the development workspace. Upstream source trees, containers, and raw logs remain local and are not included in the first release.
 
 | Source | Change and environment | Result |
 |---|---|---|

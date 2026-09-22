@@ -17,7 +17,7 @@ python3 -B ddd-python/scripts/check.py --self-test
 python3 -B ddd-python/scripts/check.py --all
 python3 -B -m unittest discover -s tests -v
 python3 -B tools/build_release.py --output dist
-python3 -B tools/verify_release.py dist/ddd-python-skill-0.1.0.zip
+python3 -B tools/verify_release.py dist/ddd-python-skill-0.1.1.zip
 ```
 
 ## 文档和发布文件

@@ -1,4 +1,4 @@
-# Explicit first-release contents; benchmark data stays local.
+# Explicit release contents; benchmark data stays local.
 .gitattributes
 .github/workflows/ci.yml
 .gitignore
@@ -45,6 +45,7 @@ ddd-python/scripts/test_runner.py
 ddd-python/scripts/workspace.py
 ddd-python/tests/__init__.py
 ddd-python/tests/test_checks.py
+ddd-python/tests/test_package_layouts.py
 ddd-python/tests/test_project.py
 docs/releasing.en.md
 docs/releasing.md

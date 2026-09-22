@@ -159,7 +159,7 @@ class CheckerTests(unittest.TestCase):
     def test_dynamic_import_is_not_certified(self):
         self.append("domain/order.py", "\ndef _plugin(name):\n    return __import__(name)\n")
         report = run_checks(self.project, {"architecture"})
-        self.assertTrue(any(f["code"] == "ARCH-DYNAMIC" and f["status"] == "needs_review" for f in report["findings"]))
+        self.assertTrue(any(f["code"] == "ARCH-DYNAMIC" and f["status"] == "failed" for f in report["findings"]))
 
     def test_stale_rule_comment(self):
         self.append("domain/order.py", "\n# Rules: ORD-999\n")

@@ -11,7 +11,7 @@
 ```bash
 python3 -B -m unittest discover -s tests -v
 python3 -B tools/build_release.py --output dist
-python3 -B tools/verify_release.py dist/ddd-python-skill-0.1.0.zip
+python3 -B tools/verify_release.py dist/ddd-python-skill-0.1.1.zip
 ```
 
 命令中的版本号应与 `VERSION` 一致。ZIP 包含仓库文件和生成的 `RELEASE-MANIFEST.json`，后者记录每个文件的 SHA-256。旁边的 `.sha256` 文件校验整个压缩包。文件顺序和时间戳固定，相同输入在同一 Python/zlib 环境下可重复构建。
@@ -20,7 +20,7 @@ python3 -B tools/verify_release.py dist/ddd-python-skill-0.1.0.zip
 
 ## 上传 GitHub
 
-创建仓库后，可以上传解压目录里的文件，或推送本地仓库。先用 `git status` 确认提交范围：`benchmarks/`、`validation/` 和 `dist/` 应被忽略。标签与版本对应，例如 `v0.1.0`。
+创建仓库后，可以上传解压目录里的文件，或推送本地仓库。先用 `git status` 确认提交范围：`benchmarks/`、`validation/` 和 `dist/` 应被忽略。标签与版本对应，例如 `v0.1.1`。
 
 等待 CI 通过后创建 Release，附上 ZIP 和 `.sha256`。工作流按 [GitHub 的 Python 矩阵方式](https://docs.github.com/en/actions/tutorials/build-and-test-code/python)配置，Actions 固定到具体提交。通过状态以实际远程运行记录为准。
 

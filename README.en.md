@@ -4,7 +4,7 @@
 
 Put business rules into objects, then use tests to keep them intact as the code changes.
 
-DomainCraft is a DDD skill for Python. It starts with domain language, aggregate boundaries, and invariants, then helps you assign responsibilities, choose an implementation, and check the result locally. The current release is **0.1.0 preview**. Its installation and invocation name remains `ddd-python`.
+DomainCraft is a DDD skill for Python. It starts with domain language, aggregate boundaries, and invariants, then helps you assign responsibilities, choose an implementation, and check the result locally. The current release is **0.1.1 preview**. Its installation and invocation name remains `ddd-python`.
 
 ## Where it helps
 
@@ -60,7 +60,7 @@ Keep reports and baselines outside the source tree under test. When comparing a 
 
 ## What has been checked
 
-The core has 69 tool regression tests, 14 order example tests, and 6 release-tool tests. Clean installation has passed on macOS arm64 with Python 3.9.6 and 3.13.9. The [validation record](docs/validation.en.md) also covers large-project pilot runs and walks through an actual before-and-after refactoring.
+The core has 87 tool regression tests, 14 order example tests, and 6 release-tool tests. Clean installation has passed on macOS arm64 with Python 3.9.6 and 3.13.9. The [validation record](docs/validation.en.md) also covers large-project pilot runs and walks through an actual before-and-after refactoring.
 
 Automated checks cover declared dependencies, code structure, and test results. Domain boundaries and the cost of a pattern still need business review; `check.py` records that separately as `semantic_status`. Database migrations, concurrency, and external services need project-specific tests.
 
@@ -71,7 +71,7 @@ Other languages can use the native test runner; static architecture analysis cur
 ```bash
 python3 -B -m unittest discover -s tests -v
 python3 -B tools/build_release.py --output dist
-python3 -B tools/verify_release.py dist/ddd-python-skill-0.1.0.zip
+python3 -B tools/verify_release.py dist/ddd-python-skill-0.1.1.zip
 ```
 
 `release-files.txt` lists every distributed file. Large benchmark source trees, containers, and raw experiment records stay in the development workspace and are ignored by Git. They are not installation dependencies.

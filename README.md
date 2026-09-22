@@ -4,7 +4,7 @@
 
 把业务规则写进对象，再用测试确认它们没有在实现和重构中走样。
 
-DomainCraft 是一个面向 Python 的 DDD Skill。它从业务语言、聚合边界和不变量出发，帮助你分配对象职责、选择合适的实现方式，并运行本地检查。当前版本为 **0.1.0 预览版**，安装名和调用名仍为 `ddd-python`。
+DomainCraft 是一个面向 Python 的 DDD Skill。它从业务语言、聚合边界和不变量出发，帮助你分配对象职责、选择合适的实现方式，并运行本地检查。当前版本为 **0.1.1 预览版**，安装名和调用名仍为 `ddd-python`。
 
 ## 适合用在哪里
 
@@ -60,7 +60,7 @@ python3 -B ddd-python/scripts/check.py --self-test
 
 ## 验证到了什么程度
 
-核心有 69 项工具回归、14 项订单示例测试和 6 项发布工具测试。干净安装已在 macOS arm64 的 Python 3.9.6 和 3.13.9 上通过。[验证记录](docs/validation.md)列出了大型项目试跑，并展示了一个实际的改造前后样例。
+核心有 87 项工具回归、14 项订单示例测试和 6 项发布工具测试。干净安装已在 macOS arm64 的 Python 3.9.6 和 3.13.9 上通过。[验证记录](docs/validation.md)列出了大型项目试跑，并展示了一个实际的改造前后样例。
 
 自动检查负责声明范围内的依赖、代码结构和测试结果；领域边界是否合理、模式是否值得采用，仍需结合业务评审。`check.py` 会单独记录 `semantic_status`。数据库迁移、并发和外部服务行为，需要项目提供相应测试。
 
@@ -71,7 +71,7 @@ Python 之外的项目可以接入原生测试，静态架构分析目前只支�
 ```bash
 python3 -B -m unittest discover -s tests -v
 python3 -B tools/build_release.py --output dist
-python3 -B tools/verify_release.py dist/ddd-python-skill-0.1.0.zip
+python3 -B tools/verify_release.py dist/ddd-python-skill-0.1.1.zip
 ```
 
 发布内容由 `release-files.txt` 逐项列出。大型 benchmark 的上游源码、容器和原始实验记录留在开发工作区，由 Git 忽略，安装 Skill 时不需要它们。

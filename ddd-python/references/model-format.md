@@ -39,7 +39,7 @@
 }
 ```
 
-内部模块按最长前缀归属到层。`allow` 列出可依赖的层前缀，`forbidden` 匹配模块及其子模块。普通、from、相对和条件导入都会进入静态图，包含 `TYPE_CHECKING` 分支，并用于检测模块环。运行时拼接导入、反射和任意插件加载需要单独检查。
+内部模块按最长前缀归属到层。`allow` 列出可依赖的层前缀，`forbidden` 匹配模块及其子模块。普通、from、相对和条件导入都会进入静态图，包含 `TYPE_CHECKING` 分支，并用于检测模块环。检测到的动态导入和星号导入会导致失败；其他反射或插件行为需要项目专用验收。
 
 装配层可以声明具体的依赖例外：
 
@@ -50,3 +50,59 @@
 例外必须对应真实模块和已有决策。它只豁免这一条依赖边，报告仍标为需评审，循环依赖照常检查。
 
 注释检查覆盖 `source_roots`：非空模块需要模块文档，公开类和方法需要文档，`__init__` 可使用类文档。私有方法按需说明。测试通过规则编号和方法 docstring 表达业务意图。
+
+## 包布局与配置位置（0.1.1）
+
+`source_roots` 决定扫描哪些文件；`import_roots` 决定它们在 Python 中叫什么。两者分开配置。下面的目录不需要移动模型文件，也不需要给 `domain`、`application` 这些通用名称添加顶层导入路径：
+
+```text
+repository/
+  src/acme/domain/
+  src/acme/application/
+  tests/
+  docs/ddd/model.json
+  docs/ddd/architecture.json
+```
+
+对应的完整架构配置可以写为：
+
+```json
+{
+  "source_roots": ["src/acme/domain", "src/acme/application"],
+  "import_roots": [
+    {"path": "src", "prefix": ""},
+    {"path": "tests", "prefix": "tests"}
+  ],
+  "layers": [
+    {"prefix": "acme.domain", "allow": ["acme.domain"], "forbidden": ["sqlite3"]},
+    {"prefix": "acme.application", "allow": ["acme.application", "acme.domain"], "forbidden": []}
+  ],
+  "external": [],
+  "exceptions": [],
+  "test_dir": "tests"
+}
+```
+
+运行时把项目根目录和配置位置分别传入：
+
+```bash
+python3 /absolute/ddd-python/scripts/check.py \
+  --project /absolute/repository \
+  --model-file docs/ddd/model.json \
+  --architecture-file docs/ddd/architecture.json \
+  --model --architecture --comments
+```
+
+配置文件路径可相对 `--project`，也可为绝对路径。配置里的源码、测试和映射路径始终相对 `--project`，不是相对 JSON 文件的位置。`acme.application` 中的 `from ..domain import ...` 会按包名解析；模型符号也应使用 `acme.domain...` 等真实名称。
+
+如果 `--project` 直接指向 `acme/`，使用 `{"path":".","prefix":"acme"}` 即可保留包名。缺省映射是 `{"path":".","prefix":""}`，兼容原有平铺示例。有重叠路径时使用最具体的映射；缺失映射、重复映射路径或重复模块名会报配置错误。扫描文件仍不能通过符号链接逃出项目根。
+
+映射只用于静态索引，不导入项目或改动 `sys.path`。运行测试时使用项目自己的已安装环境和正常测试入口；`src/` 项目的包应按该项目方式安装。不同测试框架通过 `project.py` 接入。
+
+### 未解析的依赖如何处理
+
+标准库默认识别；第三方模块在 `external` 中按前缀声明，例如 `["requests", "sqlalchemy"]`。声明不会豁免 `forbidden`，也不能把扫描范围外的本地代码当作第三方库。
+
+未知导入报 `ARCH-UNKNOWN-IMPORT`，找到但未扫描的本地依赖报 `ARCH-OUTSIDE-SCOPE`。源码没有对应层会报 `ARCH-UNCLASSIFIED`，没有任何源码匹配的层会报 `ARCH-EMPTY-LAYER`。动态导入和星号导入分别报 `ARCH-DYNAMIC`、`ARCH-STAR`；这些情况均返回失败。需要运行时依赖例外时，使用 `project.py` 的显式关系配置和全范围验收。
+
+报告的 `architecture_graph` 保存解析到的源码依赖边，`architecture_imports` 列出每条导入及其分类；`scope` 列出映射、配置位置和外部前缀。可以直接核对这次实际检查了哪些边。

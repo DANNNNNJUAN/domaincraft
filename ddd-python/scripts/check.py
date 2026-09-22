@@ -15,6 +15,8 @@ import sys
 import tempfile
 import tokenize
 
+from workspace import stdlib_names
+
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ("package", "model", "architecture", "comments", "tests")
@@ -94,6 +96,10 @@ def validate_shape(model, policy):
     require_list(policy, "layers", "architecture", nonempty=True, strings=False)
     require_text(policy, "test_dir", "architecture")
     require_list(policy, "exceptions", "architecture", strings=False)
+    if "external" in policy:
+        require_list(policy, "external", "architecture")
+        if any(not all(part.isidentifier() for part in name.split(".")) for name in policy["external"]):
+            raise InputError("Invalid external import prefix")
     prefixes = []
     for layer in policy["layers"]:
         if not isinstance(layer, dict):
@@ -123,21 +129,44 @@ def prefix_match(name, prefix):
 class SourceIndex:
     """Inspect syntax without importing the target project."""
 
-    def __init__(self, root, directories):
+    def __init__(self, root, directories, import_roots=None):
         self.modules = {}
         self.symbols = {}
         self.root = root
+        mappings = [{"path": ".", "prefix": ""}] if import_roots is None else import_roots
+        if not isinstance(mappings, list) or not mappings:
+            raise InputError("import_roots must be a nonempty list of path/prefix mappings")
+        self.import_roots = []
+        for mapping in mappings:
+            if not isinstance(mapping, dict) or not isinstance(mapping.get("prefix"), str):
+                raise InputError("Import mapping requires path and prefix")
+            prefix = mapping["prefix"]
+            if prefix and not all(part.isidentifier() for part in prefix.split(".")):
+                raise InputError("Invalid import prefix: " + prefix)
+            base = safe_path(root, mapping.get("path"))
+            if not base.is_dir() or any(base == previous for previous, _ in self.import_roots):
+                raise InputError("Missing or duplicate import root: " + str(base))
+            self.import_roots.append((base, prefix))
+        # A narrower mapping takes precedence, e.g. src/ alongside repository tests/.
+        self.import_roots.sort(key=lambda item: len(item[0].parts), reverse=True)
         for directory in directories:
             path = safe_path(root, directory)
             if not path.is_dir():
                 raise InputError("Missing source/test directory: " + str(path))
             for file in sorted(path.rglob("*.py")):
                 safe_path(root, str(file.relative_to(root)))
-                relative = file.relative_to(root).with_suffix("")
+                mapping = next(((base, prefix) for base, prefix in self.import_roots
+                                if base in file.parents), None)
+                if mapping is None:
+                    raise InputError("No import mapping for: " + str(file))
+                base, prefix = mapping
+                relative = file.relative_to(base).with_suffix("")
                 parts = list(relative.parts)
                 if parts[-1] == "__init__":
                     parts.pop()
-                module = ".".join(parts)
+                module = ".".join(([prefix] if prefix else []) + parts)
+                if not module or not all(part.isidentifier() for part in module.split(".")):
+                    raise InputError("Cannot derive Python module name; set an import prefix: " + str(file))
                 if module in self.modules:
                     if self.modules[module]["path"] == file:
                         continue
@@ -150,6 +179,17 @@ class SourceIndex:
                 self.modules[module] = {"path": file, "tree": tree, "source": source}
                 self.symbols[module] = (tree, file, module)
                 self._definitions(tree.body, module, file, module)
+
+    def local_import(self, name):
+        """Find unindexed local imports without importing or executing the project."""
+        for base, prefix in self.import_roots:
+            if prefix and not prefix_match(name, prefix):
+                continue
+            suffix = name[len(prefix):].lstrip(".") if prefix else name
+            path = base.joinpath(*suffix.split(".")) if suffix else base
+            if (suffix and path.with_suffix(".py").is_file()) or path.is_dir():
+                return True
+        return False
 
     def _definitions(self, body, prefix, file, module):
         for node in body:
@@ -266,13 +306,21 @@ class Audit:
         layers = sorted(policy["layers"], key=lambda x: len(x["prefix"]), reverse=True)
         layer_for = lambda name: next((l for l in layers if prefix_match(name, l["prefix"])), None)
         graph = {name: set() for name in source_modules}
+        standard = stdlib_names()
+        namespaces = {name.rsplit(".", n)[0] for name in index.modules for n in range(1, name.count(".") + 1)}
+        local_roots = {name.split(".")[0] for name in index.modules}
         decisions = {d["id"] for d in model["decisions"]}
         exceptions = {}
         for item in policy["exceptions"]:
             if item["decision"] not in decisions or item["from"] not in graph or item["to"] not in graph:
                 raise InputError("Architecture exception references missing decision or module")
             exceptions[(item["from"], item["to"])] = item
+        for layer in layers:
+            if not any(layer_for(name) is layer for name in source_modules):
+                self.issue("architecture", "ARCH-EMPTY-LAYER", layer["prefix"],
+                           "Layer policy matches no source modules", "Check import mappings and layer prefixes")
         used = set()
+        edges = []
         for module in sorted(source_modules):
             record = index.modules[module]
             source_layer = layer_for(module)
@@ -281,8 +329,9 @@ class Audit:
             package = module if record["path"].name == "__init__.py" else module.rpartition(".")[0]
             imports = []
             for node in ast.walk(record["tree"]):
+                location = "%s:%s" % (record["path"], getattr(node, "lineno", 1))
                 if isinstance(node, ast.Call) and (isinstance(node.func, ast.Name) and node.func.id == "__import__" or isinstance(node.func, ast.Attribute) and node.func.attr == "import_module"):
-                    self.issue("architecture", "ARCH-DYNAMIC", "%s:%s" % (record["path"], node.lineno), "Dynamic import is outside static guarantees", "Review runtime dependency behavior", "needs_review")
+                    self.issue("architecture", "ARCH-DYNAMIC", location, "Dynamic import cannot be resolved statically", "Use project.py with documented runtime edges and full validation")
                 if isinstance(node, ast.Import):
                     imports.extend((alias.name, node.lineno) for alias in node.names)
                 elif isinstance(node, ast.ImportFrom):
@@ -290,32 +339,60 @@ class Audit:
                     if node.level:
                         parts = package.split(".") if package else []
                         if node.level > len(parts):
-                            self.issue("architecture", "ARCH-RELATIVE", record["path"], "Relative import escapes the package", "Correct the import")
+                            self.issue("architecture", "ARCH-RELATIVE", location, "Relative import escapes the package", "Check the import and import_roots mapping")
                             continue
                         base = ".".join(parts[:len(parts) - node.level + 1] + ([base] if base else []))
                     imports.append((base, node.lineno))
                     for alias in node.names:
+                        if alias.name == "*":
+                            self.issue("architecture", "ARCH-STAR", location, "Wildcard import hides dependency names", "Use explicit imports")
+                            continue
                         child = base + "." + alias.name if base else alias.name
-                        if child in index.modules:
+                        if child in index.modules or child in namespaces:
                             imports.append((child, node.lineno))
-            for imported, line in imports:
-                target = next((m for m in sorted(index.modules, key=len, reverse=True) if prefix_match(imported, m)), None)
+                        elif base in namespaces and base not in index.modules:
+                            # A namespace has no __init__ defining exported attributes.
+                            imports.append((child, node.lineno))
+            for imported, line in sorted(set(imports), key=lambda item: (item[1], item[0])):
+                target = imported if imported in index.modules else None
+                target_layer = layer_for(imported)
                 if target in graph and target != module:
                     graph[module].add(target)
-                target_layer = layer_for(imported)
+                if target:
+                    classification = "source" if target in graph else "test"
+                elif imported in namespaces:
+                    classification = "namespace"
+                elif index.local_import(imported):
+                    classification = "outside_scope"
+                elif imported.split(".")[0] in local_roots or target_layer:
+                    classification = "unknown"
+                elif imported.split(".")[0] in standard:
+                    classification = "stdlib"
+                elif any(prefix_match(imported, name) for name in policy.get("external", [])):
+                    classification = "external"
+                else:
+                    classification = "unknown"
+                location = "%s:%s" % (record["path"], line)
+                edges.append(dict(source=module, target=imported, line=line, classification=classification))
+                if classification in ("unknown", "outside_scope"):
+                    code = "ARCH-OUTSIDE-SCOPE" if classification == "outside_scope" else "ARCH-UNKNOWN-IMPORT"
+                    self.issue("architecture", code, location, module + " imports unresolved/uncovered " + imported,
+                               "Map and scan local code, or explicitly declare a third-party external prefix")
+                # Namespace containers have no body to execute. Known child imports
+                # are still checked independently against their own layer policy.
                 forbidden = source_layer and any(prefix_match(imported, f) for f in source_layer["forbidden"])
                 denied = source_layer and target_layer and target_layer["prefix"] not in source_layer["allow"]
-                # Importing project tests from production is always outside declared layers.
-                if target and target not in graph:
+                if classification == "test":
                     denied = True
                 if forbidden or denied:
                     edge = (module, target or imported)
-                    location = "%s:%s" % (record["path"], line)
                     if edge in exceptions:
                         used.add(edge)
                         self.issue("architecture", "ARCH-EXCEPTION", location, exceptions[edge]["reason"], "Review decision " + exceptions[edge]["decision"], "needs_review")
                     else:
                         self.issue("architecture", "ARCH-DEPENDENCY", location, module + " imports " + imported, "Use the owning layer's port or record a justified composition-root exception")
+        self.report["architecture_graph"] = {name: sorted(targets) for name, targets in sorted(graph.items())}
+        self.report["architecture_imports"] = edges
         for edge in exceptions.keys() - used:
             self.issue("architecture", "ARCH-UNUSED-EXCEPTION", " -> ".join(edge), "Exception is not used by a forbidden edge", "Remove stale exceptions", "needs_review")
         visited, active, stack = set(), set(), []
@@ -452,7 +529,7 @@ def run_tests(root, start, timeout):
         return result
 
 
-def run_checks(root, selected=None, timeout=60):
+def run_checks(root, selected=None, timeout=60, model_file="model.json", architecture_file="architecture.json"):
     root = Path(root).resolve()
     selected = set(CHECKS if selected is None else selected)
     audit = Audit(root, selected)
@@ -463,16 +540,23 @@ def run_checks(root, selected=None, timeout=60):
             audit.package()
             current_check = None
         if selected - {"package"}:
-            model = read_json(root / "model.json")
-            policy = read_json(root / "architecture.json")
+            model_path = root / model_file
+            policy_path = root / architecture_file
+            model = read_json(model_path)
+            policy = read_json(policy_path)
             validate_shape(model, policy)
-            index = SourceIndex(root, policy["source_roots"] + [policy["test_dir"]])
+            index = SourceIndex(root, policy["source_roots"] + [policy["test_dir"]], policy.get("import_roots"))
             source_dirs = [safe_path(root, p) for p in policy["source_roots"]]
             source_modules = {name for name, record in index.modules.items()
                               if any(directory in record["path"].parents for directory in source_dirs)}
             if not any(record["tree"].body for name, record in index.modules.items() if name in source_modules):
                 raise InputError("No nonempty Python source in source_roots")
             audit.report["scope"] = {"source_roots": policy["source_roots"], "source_modules": sorted(source_modules), "test_dir": policy["test_dir"]}
+            audit.report["scope"].update(
+                import_roots=[{"path": str(base.relative_to(root)), "prefix": prefix}
+                              for base, prefix in index.import_roots],
+                model_file=str(model_path.resolve()), architecture_file=str(policy_path.resolve()),
+                external=policy.get("external", []))
             for question in model["reviews"]:
                 audit.issue("semantic", "REVIEW-REQUIRED", "model.json", question, "Review domain meaning and design tradeoffs", "needs_review")
             for check in ("model", "architecture", "comments", "tests"):
@@ -502,6 +586,12 @@ def markdown_report(report):
              "", "项目：`%s`" % report["project"], "", "| 检查 | 状态 |", "|---|---|"]
     lines.extend("| %s | %s |" % item for item in report["checks"].items())
     lines.extend(["", "覆盖目录：`%s`" % ", ".join(report["scope"].get("source_roots", [])), "", "## 发现", ""])
+    if "architecture_imports" in report:
+        imports = report["architecture_imports"]
+        unresolved = sum(row["classification"] in ("unknown", "outside_scope") for row in imports)
+        edges = sum(len(targets) for targets in report["architecture_graph"].values())
+        lines.extend(["静态导入：%s；源码依赖边：%s；未解析或未覆盖：%s。完整关系见 JSON。" %
+                      (len(imports), edges, unresolved), ""])
     for finding in report["findings"]:
         lines.extend(["- **%s / %s** — `%s`" % (finding["code"], finding["status"], finding["location"]),
                       "  " + finding["message"].replace("\n", "\n  "), "  建议：" + finding["suggestion"]])
@@ -515,6 +605,10 @@ def main():
     parser.add_argument("--project", type=Path, default=SKILL_ROOT / "assets/order_example")
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--model-file", type=Path, default=Path("model.json"),
+                        help="Model file, absolute or relative to --project")
+    parser.add_argument("--architecture-file", type=Path, default=Path("architecture.json"),
+                        help="Architecture file, absolute or relative to --project")
     for name in CHECKS:
         parser.add_argument("--" + name, action="store_true")
     parser.add_argument("--timeout", type=float, default=60)
@@ -530,7 +624,8 @@ def main():
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 2 if result.get("fatal") else int(not result["count"] or any(x["status"] != "passed" for x in result["outcomes"].values()))
     selected = {name for name in CHECKS if getattr(args, name)}
-    report = run_checks(args.project, None if args.all or not selected else selected, args.timeout)
+    report = run_checks(args.project, None if args.all or not selected else selected, args.timeout,
+                        args.model_file, args.architecture_file)
     for destination, content in ((args.json, json.dumps(report, ensure_ascii=False, indent=2) + "\n"),
                                  (args.markdown, markdown_report(report))):
         if destination:
